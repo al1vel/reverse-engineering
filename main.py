@@ -5,7 +5,7 @@ import datetime
 
 port = "COM8"
 baudrate = 115200
-
+ser = None
 
 try:
     start = datetime.datetime.now()
@@ -23,29 +23,42 @@ try:
             print("Received:", line)
             if line == 'C':
                 break
-    time.sleep(1)
+    time.sleep(0.2)
 
-    with open("generic_boot20_pc13blink.bin", "rb") as file:
-        size = os.path.getsize("generic_boot20_pc13blink.bin")
-        n_size = os.path.getsize("generic_boot20_pc13blink.bin")
+    with open("blink1B.bin", "rb") as file:
+        size = os.path.getsize("blink1B.bin")
+        n_size = os.path.getsize("blink1B.bin")
         success = True
 
         while size > 0:
-            command = 'G'
-            ser.write(command.encode())
-            print("Transmitted:", command)
+            if size >= 64:
+                command = "A"
+                ser.write(command.encode())
+                print("Transmitted:", command)
 
-            while True:
-                line = ser.readline().decode().strip()
-                if line:
-                    print(line)
-                    if line == 'R':
+                while True:
+                    line = ser.readline().decode().strip()
+                    if line:
                         print("Received:", line)
-                        break
+                        if line == 'R':
+                            break
+                ser.write(file.read(64))
+                size -= 64
 
-            ser.write(file.read(4))
-            print(f'Packet {n_size - size} - {n_size - size + 4} WENT')
-            size -= 4
+            else:
+                command = 'G'
+                ser.write(command.encode())
+                print("Transmitted:", command)
+
+                while True:
+                    line = ser.readline().decode().strip()
+                    if line:
+                        print("Received:", line)
+                        if line == 'R':
+                            break
+
+                ser.write(file.read(4))
+                size -= 4
 
             while True:
                 line = ser.readline().decode().strip()
@@ -60,17 +73,15 @@ try:
         command = 'E'
         ser.write(command.encode())
         print("Transmitted: ", command)
+        finish = datetime.datetime.now()
 
         while True:
             line = ser.readline().decode().strip()
             if line:
-                print(line)
-            if line == 'X':
                 print("Received:", line)
+            if line == 'X':
                 print("ALL DONE")
                 break
-
-    finish = datetime.datetime.now()
 
     print('Время работы: ' + str(finish - start))
 
