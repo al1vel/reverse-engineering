@@ -2,8 +2,16 @@ import serial
 import time
 import os
 import datetime
+import serial.tools.list_ports as port_list
 
-port = "COM8"
+ports = list(port_list.comports())
+a = ""
+for p in ports:
+    a = str(p)
+
+port = a.split()[0]
+print(port)
+
 baudrate = 115200
 ser = None
 
@@ -21,7 +29,7 @@ try:
         line = ser.readline().decode().strip()
         if line:
             print("Received:", line)
-            if line == 'C':
+            if line == "67":
                 break
     time.sleep(0.2)
 
@@ -40,9 +48,10 @@ try:
                     line = ser.readline().decode().strip()
                     if line:
                         print("Received:", line)
-                        if line == 'R':
+                        if line == '82':
                             break
                 ser.write(file.read(64))
+                # print(f'Packet went')
                 size -= 64
 
             else:
@@ -54,7 +63,7 @@ try:
                     line = ser.readline().decode().strip()
                     if line:
                         print("Received:", line)
-                        if line == 'R':
+                        if line == '82':
                             break
 
                 ser.write(file.read(4))
@@ -64,7 +73,7 @@ try:
                 line = ser.readline().decode().strip()
                 if line:
                     print("Received:", line)
-                    if line == 'W':
+                    if line == '87':
                         break
                     elif line == "FAILED TO WRITE":
                         success = False
@@ -72,14 +81,14 @@ try:
 
         command = 'E'
         ser.write(command.encode())
-        print("Transmitted: ", command)
+        print("Transmitted:", command)
         finish = datetime.datetime.now()
 
         while True:
             line = ser.readline().decode().strip()
             if line:
                 print("Received:", line)
-            if line == 'X':
+            if line == '88':
                 print("ALL DONE")
                 break
 
