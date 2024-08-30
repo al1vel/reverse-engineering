@@ -1,8 +1,8 @@
 //#include <variant>
-
+#define DIR PB13
 #define BOARD_LED_PIN PB14
 #define RESTART_PIN PA0
-#define USER_CODE_FLASH0x0801B000 0x0801B000
+#define USER_CODE_FLASH 0x08005000
 
 #define BOOTLOADER_FLASH ((uint32)0x08000000)
 
@@ -48,8 +48,8 @@ bool flashErasePage(uint32 pageAddr) {
   rwmVal = 0x00;
   SET_REG(FLASH_CR, rwmVal);
 
-  // Serial1.print("Erased page  ");
-  // Serial1.println(pageAddr, HEX);
+  // Serial3.print("Erased page  ");
+  // Serial3.println(pageAddr, HEX);
   return true;
 }
 
@@ -62,7 +62,7 @@ bool coolEraser(int start, int stop) {
       return false;
     }
     //String message = "Page erased " + String(counter);
-    //Serial1.println(message);
+    //Serial3.println(message);
     curAddress += 0x400;
     counter += 1;
   }
@@ -116,10 +116,10 @@ bool WriteWordFromOriginal(uint32_t addr, uint32_t word) {
     return false;
   }
 
-  // Serial1.print("ADDR  ");
-  // Serial1.print(addr, HEX);
-  // Serial1.print("  CLUSTER  ");
-  // Serial1.println(word, HEX);
+  // Serial3.print("ADDR  ");
+  // Serial3.print(addr, HEX);
+  // Serial3.print("  CLUSTER  ");
+  // Serial3.println(word, HEX);
   return true;
 }
 
@@ -140,16 +140,17 @@ bool WriteWord(uint32_t addr, char *buffer) {
   rwmVal &= 0xFFFFFFFE;
   SET_REG(FLASH_CR, rwmVal);
 
-  // if (*(uint32_t *)addr != word) {
-  //     return false;
-  // }
+  uint32_t word = ((uint32_t)buffer[3] << 24) + ((uint32_t)buffer[2] << 16) + ((uint32_t)buffer[1] << 8) + (uint32_t)buffer[0];
+  if (*(uint32_t *)addr != word) {
+    return false;
+  }
 
-  // Serial1.print("ADDR  ");
-  // Serial1.print(addr, HEX);
-  // Serial1.print("  CLUSTER  ");
-  // Serial1.print(hhWord, HEX);
-  // Serial1.print("  ");
-  // Serial1.println(lhWord, HEX);
+  // Serial3.print("ADDR  ");
+  // Serial3.print(addr, HEX);
+  // Serial3.print("  CLUSTER  ");
+  // Serial3.print(hhWord, HEX);
+  // Serial3.print("  ");
+  // Serial3.println(lhWord, HEX);
   return true;
 }
 
@@ -158,17 +159,16 @@ bool WriteWord(uint32_t addr, char *buffer) {
 
 
 //COMMANDS
-#define START 'S'
-#define START_OK 'P'
-#define ENDOFFILE 'E'
-#define FCleared 'C'
-#define Ready_for_receiving 'R'
-#define WaitCom 'W'
-#define GET4BYTES 'G'
-#define GET64BYTES 'A'
-#define Finished 'F'
-#define StartReboot 'X'
-#define CONNECT 'Q'
+#define START 83
+#define START_OK 80
+#define ENDOFFILE 69
+#define FCleared 67
+#define Ready_for_receiving 82
+#define WaitCom 87
+#define GET4BYTES 71
+#define GET64BYTES 65
+#define Finished 70
+#define PassCurrentCommand 73
 
 //STAGES
 #define Init 1
@@ -177,43 +177,72 @@ bool WriteWord(uint32_t addr, char *buffer) {
 #define Receiving64 4
 #define Finishing 5
 #define WaitingForBegin 6
-#define Restarting 7
-#define Connecting 8
 
 //ERROR-CODES
-#define NoStartCommand 'N'
-#define FlashWriteInvalid 'I'
-#define InvalidCommand 'M'
+#define InvalidCommand 77
+#define WriteFlash64Failed 68
+#define WriteFlash4Failed 66
+#define InvalidSerial 72
+#define ReadBytesFailed 90
 
 //SERIAL-TYPES
 #define HSerial 50
 #define USerial 51
 
 uint8_t STAGE;
-uint8_t COMMAND;
+byte COMMAND;
 uint8_t SerialType;
 
 char buff64[64];
 char buff4[4];
 
-uint32_t address = 0x0801B000;
+uint32_t address = 0x08005000;
 uint32_t *userSpace = (uint32_t *)(address);
 
 int startCounter = 0;
 bool success = true;
+unsigned int time;
+unsigned int waitTime = 3000;
+bool timeFlag;
 
+
+
+bool checkUserCode(uint32_t usrAddr) {
+  uint32_t sp = *(uint32_t *)usrAddr;
+
+  if ((sp & 0x2FFE0000) == 0x20000000) {
+    return (true);
+  } else {
+    return (false);
+  }
+}
 
 void setup() {
   pinMode(BOARD_LED_PIN, OUTPUT);
-  Serial1.begin(115200);
+
+  Serial3.begin(115200);
+  while (!Serial3) delay(2);
+  pinMode(DIR, OUTPUT);
+  digitalWrite(DIR, LOW);
+  delay(2);
+
   Serial.begin(115200);
+
   STAGE = WaitingForBegin;
+  unsigned int time = millis();
+  digitalWrite(BOARD_LED_PIN, HIGH);
+
+  if (checkUserCode(address)) {
+    timeFlag = true;
+  } else {
+    timeFlag = false;
+  }
 }
 
 
 void EndSerialPort() {
   if (HSerial == SerialType) {
-    Serial1.end();
+    Serial3.end();
   } else if (USerial == SerialType) {
     Serial.end();
   } else {
@@ -221,11 +250,23 @@ void EndSerialPort() {
   }
 }
 
-void PrintCommand(uint8_t com) {
+void EndAllSerial() {
+  Serial3.end();
+  Serial.end();
+}
+
+void PrintCommand(byte com) {
   if (HSerial == SerialType) {
-    Serial1.println(com);
-  } else if (USerial == SerialType) {
+    digitalWrite(DIR, HIGH);
+    delay(2);
+    Serial3.write(com);
+    Serial3.flush();
+    digitalWrite(DIR, LOW);
+    delay(2);
+    Serial.print("trying print   ");
     Serial.println(com);
+  } else if (USerial == SerialType) {
+    Serial.write(com);
   } else {
     success = false;
   }
@@ -235,9 +276,8 @@ char ReceiveCommand() {
   uint8_t com;
 
   if (HSerial == SerialType) {
-    while (Serial1.available() < 1) {}
-    com = Serial1.read();
-
+    while (Serial3.available() < 1) {}
+    com = Serial3.read();
   } else if (USerial == SerialType) {
     while (Serial.available() < 1) {}
     com = Serial.read();
@@ -252,25 +292,39 @@ void ReceiveBytes(int size) {
   if (4 == size) {
 
     if (HSerial == SerialType) {
-      while (Serial1.available() < 4) {}
-      Serial1.readBytes(buff4, 4);
+      while (Serial3.available() < 4) {}
+      if (Serial3.readBytes(buff4, 4) != 4) {
+        PrintCommand(ReadBytesFailed);
+        STAGE = WaitingCommand;
+      }
     } else if (USerial == SerialType) {
       while (Serial.available() < 4) {}
-      Serial.readBytes(buff4, 4);
+      if (Serial.readBytes(buff4, 4) != 4) {
+        PrintCommand(ReadBytesFailed);
+        STAGE = WaitingCommand;
+      }
     } else {
-      success = false;
+      PrintCommand(InvalidSerial);
+      STAGE = WaitingCommand;
     }
 
   } else if (64 == size) {
 
     if (HSerial == SerialType) {
-      while (Serial1.available() < 16) {}
-      Serial1.readBytes(buff64, 64);
+      while (Serial3.available() < 16) {}
+      if (Serial3.readBytes(buff64, 64) != 64) {
+        PrintCommand(ReadBytesFailed);
+        STAGE = WaitingCommand;
+      }
     } else if (USerial == SerialType) {
       while (Serial.available() < 16) {}
-      Serial.readBytes(buff64, 64);
+      if (Serial.readBytes(buff64, 64) != 64) {
+        PrintCommand(ReadBytesFailed);
+        STAGE = WaitingCommand;
+      }
     } else {
-      success = false;
+      PrintCommand(InvalidSerial);
+      STAGE = WaitingCommand;
     }
 
   } else {
@@ -285,41 +339,39 @@ void loop() {
 
     case WaitingForBegin:
       {
-        if (startCounter < 5) {
-          digitalWrite(BOARD_LED_PIN, HIGH);
-          delay(100);
-          digitalWrite(BOARD_LED_PIN, LOW);
-          delay(1000);
+        digitalWrite(DIR, LOW);
+        if (((millis() - time) < waitTime) || (timeFlag == false)) {
+          // digitalWrite(BOARD_LED_PIN, HIGH);
+          // delay(100);
 
-          if (Serial1.available() > 0) {
+          if (Serial3.available() > 0) {
+            COMMAND = Serial3.read();
 
-            COMMAND = Serial1.read();
             if (COMMAND == START) {
               SerialType = HSerial;
-              Serial.end();
+              //Serial.end();
+              digitalWrite(BOARD_LED_PIN, LOW);
               STAGE = Init;
-            } else {
-              Serial1.println("Wrong command in beginning");
             }
 
           } else if (Serial.available() > 0) {
-
             COMMAND = Serial.read();
+
             if (COMMAND == START) {
               SerialType = USerial;
-              Serial1.end();
+              //Serial3.end();
+              digitalWrite(BOARD_LED_PIN, LOW);
               STAGE = Init;
-            } else {
-              Serial.println("Wrong command in beginning");
             }
-
-          } else {
-            startCounter += 1;
           }
 
         } else {
-          setMspAndJump(USER_CODE_FLASH0x0801B000);
+          digitalWrite(BOARD_LED_PIN, LOW);
+          EndAllSerial();
+          setMspAndJump(USER_CODE_FLASH);
         }
+        // digitalWrite(BOARD_LED_PIN, LOW);
+        // delay(100);
         break;
       }
 
@@ -327,7 +379,7 @@ void loop() {
       {
         PrintCommand(START_OK);
         flashUnlock();
-        coolEraser(108, 127);
+        coolEraser(20, 127);
         PrintCommand(FCleared);
         STAGE = WaitingCommand;
         break;
@@ -344,6 +396,11 @@ void loop() {
           STAGE = Receiving64;
         } else if (COMMAND == ENDOFFILE) {
           STAGE = Finishing;
+        } else if (COMMAND == PassCurrentCommand) {
+          int passTime = millis();
+          while ((millis() - passTime) < 500) {
+            Serial3.read();
+          }
         } else {
           PrintCommand(InvalidCommand);
         }
@@ -356,7 +413,10 @@ void loop() {
         PrintCommand(Ready_for_receiving);
         ReceiveBytes(4);
 
-        WriteWord((uint32_t)userSpace, buff4);
+        if (!(WriteWord((uint32_t)userSpace, buff4))) {
+          PrintCommand(WriteFlash4Failed);
+          STAGE = WaitingCommand;
+        };
         userSpace += 1;
 
         PrintCommand(WaitCom);
@@ -372,7 +432,10 @@ void loop() {
 
         char *buffer_pointer = buff64;
         for (int i = 0; i < 16; ++i) {
-          WriteWord((uint32_t)userSpace, buffer_pointer);
+          if (!(WriteWord((uint32_t)userSpace, buffer_pointer))) {
+            PrintCommand(WriteFlash64Failed);
+            STAGE = WaitingCommand;
+          };
           userSpace += 1;
           buffer_pointer += 4;
         }
@@ -384,20 +447,16 @@ void loop() {
 
     case Finishing:
       {
-        PrintCommand(success);
         flashLock();
         PrintCommand(Finished);
-        STAGE = Restarting;
-        break;
-      }
-
-
-    case Restarting:
-      {
-        PrintCommand(StartReboot);
-        delay(1000);
-        EndSerialPort();
+        
+        Serial3.flush();
+        Serial.flush();
+        delay(500);
+        
+        EndAllSerial();
         RestartDevice();
+        break;
       }
   }
 }
