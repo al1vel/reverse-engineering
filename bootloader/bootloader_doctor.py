@@ -19,13 +19,13 @@ start_command = bytearray(b'\xFE\x43\x44\x45\x46\x47\x48\xEF')
 start = datetime.datetime.now()
 
 for i in range(5):
-    print(f"Trying to open serial. try {i}.")
+    print(f"Trying to open serial. try {i + 1}.")
     try:
         ser = serial.Serial(port, baudrate=baudrate)
-    except serial.SerialException as se:
+    except Exception as se:
         print("Serial port error:", str(se))
         ser = None
-        time.sleep(1)
+        time.sleep(1.0)
 
 if ser is None:
     print("Serial didn't open. Shutting down...")
@@ -43,9 +43,9 @@ except serial.SerialException as e:
     print("Failed to reopen serial: ", e)
     sys.exit()
 
+print("Serial reopened.")
 command_S = bytearray(b'\x7B\x53\x7C')
 ser.write(command_S)
-print("Command S sent.")
 
 while True:
     line = ser.read(3).decode('utf-8')
