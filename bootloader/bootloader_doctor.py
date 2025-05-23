@@ -6,7 +6,6 @@ import sys
 
 
 arguments = sys.argv[1:]
-
 port = arguments[0]
 path = arguments[1]
 
@@ -18,14 +17,17 @@ start_command = bytearray(b'\xFE\x43\x44\x45\x46\x47\x48\xEF')
 
 start = datetime.datetime.now()
 
-for i in range(5):
+for i in range(10):
     print(f"Trying to open serial. try {i + 1}.")
     try:
         ser = serial.Serial(port, baudrate=baudrate)
     except Exception as se:
-        print("Serial port error:", str(se))
+        print("Serial port error: ", se)
         ser = None
         time.sleep(1.0)
+    finally:
+        if ser is not None:
+            break
 
 if ser is None:
     print("Serial didn't open. Shutting down...")
